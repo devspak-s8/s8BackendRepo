@@ -2,7 +2,7 @@
 import jwt
 from datetime import datetime, timedelta
 from fastapi import HTTPException, status
-from common.core.config import settings
+from s8.core.config import settings
 def create_access_token(data: dict, expires_delta: timedelta = timedelta(hours=1)):
     to_encode = data.copy()
     expire = datetime.utcnow() + expires_delta

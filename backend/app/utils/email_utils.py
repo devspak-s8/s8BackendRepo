@@ -1,6 +1,6 @@
 import smtplib
 from email.message import EmailMessage
-from common.core.config import settings
+from s8.core.config import settings
 
 def send_email(to_email: str, subject: str, body: str):
     msg = EmailMessage()
