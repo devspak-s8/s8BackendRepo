@@ -25,11 +25,8 @@ from s8.service.template_service import update_template_status
 mongo_client = AsyncIOMotorClient(settings.MONGO_URL)
 
 # Extract database name from URI
-parsed_uri = urlparse(settings.MONGO_URL)
-db_name = parsed_uri.path[1:]  # skip the leading '/'
+db = mongo_client["s8builder"]  # skip the leading '/'
 
-# Use the extracted database
-db = mongo_client[db_name]
 
 template_collection = db["templates"]
 
