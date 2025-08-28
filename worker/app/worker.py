@@ -15,8 +15,8 @@ import psutil
 import boto3
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from common.core.config import settings
-from common.service.template_service import update_template_status
+from s8.core.config import settings
+from s8.service.template_service import update_template_status
 
 # -----------------------------
 # MongoDB (async)

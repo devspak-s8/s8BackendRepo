@@ -11,9 +11,9 @@ from app.routes.templates import template_router
 from app.routes.bookings import booking_router
 from app.routes.dashboard import dashboard_router
 from app.routes.ws import ws_router
-from common.db import user_collection
+from s8.db import user_collection
 
-from common.core.error_handlers import (
+from s8.core.error_handlers import (
     http_exception_handler,
     validation_exception_handler,
     generic_exception_handler

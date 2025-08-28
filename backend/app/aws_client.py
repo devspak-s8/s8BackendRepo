@@ -1,7 +1,7 @@
 # app/aws_client.py
 import boto3
 import json
-from common.core.config import settings
+from s8.core.config import settings
 
 # SQS client
 sqs_client = boto3.client(

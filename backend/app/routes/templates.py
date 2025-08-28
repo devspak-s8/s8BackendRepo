@@ -7,13 +7,13 @@ from datetime import datetime
 import boto3
 from bson import ObjectId
 
-from common.core.config import settings
+from s8.core.config import settings
 from app.aws_client import push_template_task
-from common.service.template_service import create_template_record
+from s8.service.template_service import create_template_record
 from app.models.template import Template
-from common.db.database import template_collection
-from common.serialize import serialize_list
-from common.middleware.rbac import get_current_user  # 🔑 Auth
+from s8.db.database import template_collection
+from s8.serialize import serialize_list
+from s8.middleware.rbac import get_current_user  # 🔑 Auth
 
 template_router = APIRouter(tags=["Templates"])
 

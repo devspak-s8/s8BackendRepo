@@ -1,6 +1,6 @@
-from common.db.database import db
+from s8.db.database import db
 from bson import ObjectId
-from common.serialize import serialize_doc, serialize_list  # your code
+from s8.serialize import serialize_doc, serialize_list  # your code
 
 booking_collection = db.bookings
 
