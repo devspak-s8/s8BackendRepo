@@ -9,7 +9,7 @@ from s8.db.database import booking_collection
 
 from app.schemas.bookings import BookingCreate, BookingOut, BookingStatusUpdate
 
-from middleware.rbac import get_current_user, is_admin as get_admin_user
+from app.middleware.rbac import get_current_user, is_admin as get_admin_user
 from app.routes.ws import broadcast_booking_update
 from app.utils.meet_link_and_mail import send_meeting_email
 

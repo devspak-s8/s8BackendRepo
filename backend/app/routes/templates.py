@@ -13,7 +13,7 @@ from s8.service.template_service import create_template_record
 from app.models.template import Template
 from s8.db.database import template_collection
 from s8.serialize import serialize_list
-from middleware.rbac import get_current_user  # 🔑 Auth
+from app.middleware.rbac import get_current_user  # 🔑 Auth
 
 template_router = APIRouter(tags=["Templates"])
 
