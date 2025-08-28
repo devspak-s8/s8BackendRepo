@@ -2,7 +2,7 @@
 from datetime import timedelta
 from fastapi import APIRouter, Body, Query, Security, HTTPException
 from fastapi.responses import RedirectResponse
-from middleware.rbac import get_current_user
+from app.middleware.rbac import get_current_user
 from app.schemas.user import *
 from app.utils.hash_utils import hash_password, verify_password
 from app.utils.auth_utils import create_access_token, decode_token, create_refresh_token
