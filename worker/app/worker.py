@@ -264,6 +264,7 @@ async def process_template(template_id: str, upload_zip_key: str):
 # Async SQS polling
 # -----------------------------
 async def poll_sqs():
+    logger.info("Starting async SQS polling...")
     async with await get_sqs_client() as sqs_client:
         while not stop_flag:
             try:
@@ -275,12 +276,12 @@ async def poll_sqs():
                 )
                 messages = resp.get("Messages", [])
                 if messages:
-                    tasks = []
-                    for m in messages:
-                        body = json.loads(m["Body"])
-                        tasks.append(process_template(str(body["template_id"]), body["s3_key"]))
+                    tasks = [
+                        process_template(str(json.loads(m["Body"])["template_id"]),
+                                         json.loads(m["Body"])["s3_key"])
+                        for m in messages
+                    ]
                     await asyncio.gather(*tasks)
-
                     for m in messages:
                         await sqs_client.delete_message(
                             QueueUrl=settings.SQS_QUEUE_URL,
@@ -291,6 +292,7 @@ async def poll_sqs():
             except Exception as e:
                 logger.error(f"SQS polling error: {e}")
                 await asyncio.sleep(5)
+
 
 # -----------------------------
 # Recover pending templates
@@ -313,18 +315,20 @@ async def process_stuck_templates():
 async def main_loop():
     while not stop_flag:
         try:
+            # Recover stuck templates first
             await process_stuck_templates()
+            # Poll SQS continuously
             await poll_sqs()
         except Exception as e:
-            logger.error(f"Unexpected error in main loop: {e}")
-            await asyncio.sleep(5)  # backoff before retry
+            logger.error(f"Worker main loop error: {e}")
+            await asyncio.sleep(5)  # backoff on error
 
 async def main():
     await main_loop()
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        asyncio.run(main_loop())
     except KeyboardInterrupt:
         logger.info("Received interrupt, shutting down...")
     except Exception as e:
@@ -332,3 +336,4 @@ if __name__ == "__main__":
     finally:
         logger.info("Worker shutdown complete.")
         sys.exit(0)
+
