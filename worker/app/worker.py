@@ -2,6 +2,7 @@
 import os
 import json
 import shutil
+from urllib.parse import urlparse
 import zipfile
 import time
 import asyncio
@@ -22,7 +23,14 @@ from s8.service.template_service import update_template_status
 # MongoDB (async)
 # -----------------------------
 mongo_client = AsyncIOMotorClient(settings.MONGO_URL)
-db = mongo_client.get_default_database()
+
+# Extract database name from URI
+parsed_uri = urlparse(settings.MONGO_URL)
+db_name = parsed_uri.path[1:]  # skip the leading '/'
+
+# Use the extracted database
+db = mongo_client[db_name]
+
 template_collection = db["templates"]
 
 # -----------------------------
