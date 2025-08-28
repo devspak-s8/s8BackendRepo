@@ -1,7 +1,8 @@
 # app/routes/dashboard_router.py
 from fastapi import APIRouter, Depends
 from s8.service.dashboard_service import get_dashboard_overview
-from s8.middleware.rbac import get_current_user
+
+from middleware.rbac import get_current_user
 
 dashboard_router = APIRouter(tags=["Dashboard"])
 

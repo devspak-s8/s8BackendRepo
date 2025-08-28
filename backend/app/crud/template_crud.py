@@ -1,5 +1,5 @@
 # app/crud/template_crud.py
-from app.database import template_collection
+from s8.db.database import template_collection
 from app.models.template import Template
 from bson import ObjectId
 
