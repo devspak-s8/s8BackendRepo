@@ -146,13 +146,12 @@ def detect_framework(project_dir: str) -> Tuple[str, Optional[str]]:
     if not pkg:
         return "plain", None
     deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
-    scripts = pkg.get("scripts", {})
     if "next" in deps:
-        return "next", "out"
+        return "next", None
     if "vite" in deps:
-        return "vite", "dist"
+        return "vite", None
     if "react" in deps:
-        return "cra", "build"
+        return "cra", None
     for guess in ("dist", "build", "out"):
         if os.path.exists(os.path.join(project_dir, guess)):
             return "unknown", guess
@@ -167,46 +166,41 @@ def ensure_build_output(project_dir: str, framework: str, guessed_dir: Optional[
         p = os.path.join(project_dir, guess)
         if os.path.exists(p):
             return p
-    if framework == "plain":
-        return project_dir
-    return None
+    # For plain / Next.js projects without index.html, just return project_dir
+    return project_dir
 
 # -----------------------------
 # Build & publish
 # -----------------------------
-def build_project_if_needed(project_dir: str) -> Tuple[str, str]:
+def build_project_if_needed(project_dir: str) -> str:
     framework, guess = detect_framework(project_dir)
     logger.info(f"Detected framework: {framework} (guess out: {guess})")
-    if framework == "plain":
-        out = ensure_build_output(project_dir, framework, guess)
-        if not os.path.exists(os.path.join(out, "index.html")):
-            raise RuntimeError("Plain template missing index.html")
-        return framework, out
+    out_dir = ensure_build_output(project_dir, framework, guess)
 
-    env = os.environ.copy()
-    has_lock = any(os.path.exists(os.path.join(project_dir, lf)) for lf in ("package-lock.json", "npm-shrinkwrap.json"))
-    install_cmd = ["npm", "ci"] if has_lock else ["npm", "install", "--legacy-peer-deps"]
-    run_with_timeout(install_cmd, cwd=project_dir, timeout=20*60, env=env)
+    if framework != "plain":
+        env = os.environ.copy()
+        has_lock = any(os.path.exists(os.path.join(project_dir, lf)) for lf in ("package-lock.json", "npm-shrinkwrap.json"))
+        install_cmd = ["npm", "ci"] if has_lock else ["npm", "install", "--legacy-peer-deps"]
+        run_with_timeout(install_cmd, cwd=project_dir, timeout=20*60, env=env)
 
-    if framework == "next":
         pkg = read_package_json(project_dir) or {}
         scripts = pkg.get("scripts", {})
-        if "build" in scripts:
+        if framework == "next":
+            if "build" in scripts:
+                run_with_timeout(["npm", "run", "build"], cwd=project_dir, timeout=30*60, env=env)
+            if "export" in scripts:
+                run_with_timeout(["npm", "run", "export"], cwd=project_dir, timeout=15*60, env=env)
+            else:
+                try:
+                    run_with_timeout(["npx", "next", "export"], cwd=project_dir, timeout=15*60, env=env)
+                except Exception as e:
+                    logger.warning(f"next export fallback failed: {e}")
+        elif framework in ("vite", "cra", "unknown"):
             run_with_timeout(["npm", "run", "build"], cwd=project_dir, timeout=30*60, env=env)
-        if "export" in scripts:
-            run_with_timeout(["npm", "run", "export"], cwd=project_dir, timeout=15*60, env=env)
-        else:
-            try:
-                run_with_timeout(["npx", "next", "export"], cwd=project_dir, timeout=15*60, env=env)
-            except Exception as e:
-                logger.warning(f"next export fallback failed: {e}")
-    elif framework in ("vite", "cra", "unknown"):
-        run_with_timeout(["npm", "run", "build"], cwd=project_dir, timeout=30*60, env=env)
 
-    out_dir = ensure_build_output(project_dir, framework, guess)
-    if not out_dir or not os.path.exists(os.path.join(out_dir, "index.html")):
-        raise RuntimeError("Build output missing index.html (SPA entry).")
-    return framework, out_dir
+        out_dir = ensure_build_output(project_dir, framework, guess)
+
+    return out_dir
 
 async def process_template(template_id: str, upload_zip_key: str):
     work_dir = None
@@ -223,23 +217,27 @@ async def process_template(template_id: str, upload_zip_key: str):
         if len(entries) == 1 and os.path.isdir(os.path.join(extract_dir, entries[0])):
             extract_dir = os.path.join(extract_dir, entries[0])
 
-        framework, out_dir = build_project_if_needed(extract_dir)
-        logger.info(f"Build complete. Framework={framework}, out={out_dir}")
+        out_dir = build_project_if_needed(extract_dir)
+        logger.info(f"Build complete. Output={out_dir}")
 
         s3_prefix = f"previews/{template_id}"
         upload_folder_to_s3(out_dir, s3_prefix)
-        index_key = f"{s3_prefix}/index.html"
-
-        preview_url = presign(index_key, expires=3600)
+        preview_key = f"{s3_prefix}/index.html"
+        preview_url = presign(preview_key, expires=3600)
         await update_template_status(template_id, "ready", preview_url)
         logger.info(f"Template {template_id} ready at {preview_url}")
 
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Build command failed (code {e.returncode}): {e.output}")
-        await update_template_status(template_id, "error", None)
     except Exception as e:
         logger.error(f"Error processing template {template_id}: {e}")
         await update_template_status(template_id, "error", None)
+        # Optional DLQ
+        dlq_url = getattr(settings, "SQS_DLQ_URL", None)
+        if dlq_url:
+            logger.info(f"Sending failed template {template_id} to DLQ")
+            sqs.send_message(
+                QueueUrl=dlq_url,
+                MessageBody=json.dumps({"template_id": template_id, "s3_key": upload_zip_key})
+            )
     finally:
         if zip_path and os.path.exists(zip_path):
             try: os.remove(zip_path)
@@ -247,17 +245,10 @@ async def process_template(template_id: str, upload_zip_key: str):
         if work_dir: safe_rmtree(work_dir)
 
 # -----------------------------
-# SQS consumption
+# Poll SQS (async)
 # -----------------------------
-async def process_message(msg):
-    body = json.loads(msg["Body"])
-    template_id = body["template_id"]
-    s3_key = body["s3_key"]
-    await process_template(template_id, s3_key)
-
-def poll_sqs():
+async def poll_sqs():
     logger.info("Starting SQS polling...")
-    loop = asyncio.get_event_loop()
     while not stop_flag:
         try:
             resp = sqs.receive_message(
@@ -266,39 +257,48 @@ def poll_sqs():
                 WaitTimeSeconds=20,
                 VisibilityTimeout=300,
             )
-            msgs = resp.get("Messages", [])
-            for m in msgs:
-                try:
-                    loop.run_until_complete(process_message(m))
+            messages = resp.get("Messages", [])
+            if messages:
+                await asyncio.gather(*(process_template(json.loads(m["Body"])["template_id"],
+                                                          json.loads(m["Body"])["s3_key"])
+                                       for m in messages))
+                for m in messages:
                     sqs.delete_message(
                         QueueUrl=settings.SQS_QUEUE_URL,
-                        ReceiptHandle=m["ReceiptHandle"],
+                        ReceiptHandle=m["ReceiptHandle"]
                     )
-                except Exception as e:
-                    logger.error(f"Error processing message: {e}")
+            else:
+                await asyncio.sleep(2)
         except Exception as e:
-            logger.error(f"Error polling SQS: {e}")
-            time.sleep(5)
-    logger.info("Exiting SQS poll loop. Worker stopped.")
+            logger.error(f"SQS polling error: {e}")
+            await asyncio.sleep(5)
 
 # -----------------------------
 # Recover pending templates
 # -----------------------------
 async def process_stuck_templates():
-    async for t in template_collection.find({"status": "pending"}):
+    pending = [t async for t in template_collection.find({"status": "pending"})]
+    tasks = []
+    for t in pending:
         s3_key = t.get("zip_s3_key")
         if not s3_key:
-            logger.warning(f"Skipping {t['_id']} — no zip_s3_key")
+            logger.warning(f"No zip_s3_key for {t['_id']}")
             continue
-        logger.info(f"Recovering pending template {t['_id']}")
-        await process_template(str(t["_id"]), s3_key)
+        tasks.append(process_template(str(t["_id"]), s3_key))
+    if tasks:
+        await asyncio.gather(*tasks)
 
 # -----------------------------
 # Main
 # -----------------------------
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(process_stuck_templates())
-    poll_sqs()
-    logger.info("Worker shutdown complete.")
-    sys.exit(0)
+    try:
+        loop.run_until_complete(process_stuck_templates())
+        loop.run_until_complete(poll_sqs())
+    except KeyboardInterrupt:
+        logger.info("Received interrupt, shutting down...")
+    finally:
+        logger.info("Worker shutdown complete.")
+        loop.close()
+        sys.exit(0)
