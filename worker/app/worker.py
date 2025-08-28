@@ -2,8 +2,6 @@
 import os
 import json
 import shutil
-from urllib.parse import urlparse
-import zipfile
 import tempfile
 import subprocess
 import signal
@@ -116,6 +114,7 @@ def safe_rmtree(path: str):
 def unzip_to(zip_path: str, dst: str):
     safe_rmtree(dst)
     os.makedirs(dst, exist_ok=True)
+    import zipfile
     with zipfile.ZipFile(zip_path, "r") as zf:
         zf.extractall(dst)
 
@@ -265,7 +264,6 @@ async def process_template(template_id: str, upload_zip_key: str):
 # Async SQS polling
 # -----------------------------
 async def poll_sqs():
-    logger.info("Starting async SQS polling...")
     async with await get_sqs_client() as sqs_client:
         while not stop_flag:
             try:
@@ -310,11 +308,19 @@ async def process_stuck_templates():
         await asyncio.gather(*tasks)
 
 # -----------------------------
-# Main
+# Main loop
 # -----------------------------
+async def main_loop():
+    while not stop_flag:
+        try:
+            await process_stuck_templates()
+            await poll_sqs()
+        except Exception as e:
+            logger.error(f"Unexpected error in main loop: {e}")
+            await asyncio.sleep(5)  # backoff before retry
+
 async def main():
-    await process_stuck_templates()
-    await poll_sqs()
+    await main_loop()
 
 if __name__ == "__main__":
     try:
