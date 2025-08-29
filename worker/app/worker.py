@@ -23,13 +23,12 @@ mongo_client = AsyncIOMotorClient(settings.MONGO_URL)
 db = mongo_client["s8builder"]
 template_collection = db["templates"]
 
-# -----------------------------
-# AWS async session
-# -----------------------------
 session = aioboto3.Session()
 BUCKET = settings.BUCKET_NAME
 REGION = settings.AWS_REGION
-async def get_s3_client():
+
+# Make these regular functions
+def get_s3_client():
     return session.client(
         "s3",
         aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
@@ -37,14 +36,13 @@ async def get_s3_client():
         region_name=settings.AWS_REGION,
     )
 
-async def get_sqs_client():
+def get_sqs_client():
     return session.client(
         "sqs",
         aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
         aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
         region_name=settings.AWS_REGION,
     )
-
 # -----------------------------
 # Logging
 # -----------------------------
