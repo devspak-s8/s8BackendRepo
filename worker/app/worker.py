@@ -334,10 +334,31 @@ async def main_loop():
         logger.error(f"Worker main loop error: {e}")
         await asyncio.sleep(5)  # backoff on error
 
-
 # -----------------------------
 # Entry point
 # -----------------------------
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(main_loop())
+
+    async def worker_forever():
+        """
+        Recover pending templates and continuously poll SQS.
+        Loops indefinitely and handles exceptions gracefully.
+        """
+        global stop_flag
+        while not stop_flag:
+            try:
+                logger.info("Starting recovery of pending templates...")
+                await process_stuck_templates()
+
+                logger.info("Starting SQS polling...")
+                await poll_sqs()  # this will block and process messages continuously
+
+            except Exception as e:
+                logger.error(f"Worker encountered an error: {e}")
+                await asyncio.sleep(5)  # backoff before retry
+
+        logger.info("Worker shutdown complete.")
+
+    # Run the worker forever
+    asyncio.run(worker_forever())
