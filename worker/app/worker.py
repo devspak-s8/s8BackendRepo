@@ -326,3 +326,9 @@ async def main_loop():
         await asyncio.sleep(5)  # backoff on error
 
 
+# -----------------------------
+# Entry point
+# -----------------------------
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main_loop())
