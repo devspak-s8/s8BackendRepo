@@ -313,27 +313,16 @@ async def process_stuck_templates():
 # Main loop
 # -----------------------------
 async def main_loop():
-    while not stop_flag:
-        try:
-            # Recover stuck templates first
-            await process_stuck_templates()
-            # Poll SQS continuously
-            await poll_sqs()
-        except Exception as e:
-            logger.error(f"Worker main loop error: {e}")
-            await asyncio.sleep(5)  # backoff on error
-
-async def main():
-    await main_loop()
-
-if __name__ == "__main__":
+    logger.info("Worker main loop started.")
     try:
-        asyncio.run(main_loop())
-    except KeyboardInterrupt:
-        logger.info("Received interrupt, shutting down...")
+        # Recover any stuck templates first
+        await process_stuck_templates()
+
+        # Hand off to continuous SQS polling
+        await poll_sqs()
+
     except Exception as e:
-        logger.error(f"Worker crashed: {e}")
-    finally:
-        logger.info("Worker shutdown complete.")
-        sys.exit(0)
+        logger.error(f"Worker main loop error: {e}")
+        await asyncio.sleep(5)  # backoff on error
+
 
