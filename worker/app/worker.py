@@ -288,10 +288,13 @@ async def poll_sqs():
                             ReceiptHandle=m["ReceiptHandle"]
                         )
                 else:
-                    await asyncio.sleep(2)
+                    # Heartbeat log when queue is empty
+                    logger.info("SQS queue empty, waiting for new messages...")
+                    await asyncio.sleep(5)
             except Exception as e:
                 logger.error(f"SQS polling error: {e}")
                 await asyncio.sleep(5)
+
 
 
 # -----------------------------
@@ -299,6 +302,10 @@ async def poll_sqs():
 # -----------------------------
 async def process_stuck_templates():
     pending = [t async for t in template_collection.find({"status": "pending"})]
+    if not pending:
+        logger.info("No pending templates to process.")
+        return
+
     tasks = []
     for t in pending:
         s3_key = t.get("zip_s3_key")
@@ -306,8 +313,10 @@ async def process_stuck_templates():
             logger.warning(f"No zip_s3_key for {t['_id']}")
             continue
         tasks.append(process_template(str(t["_id"]), s3_key))
+
     if tasks:
         await asyncio.gather(*tasks)
+        logger.info(f"Processed {len(tasks)} pending template(s).")
 
 # -----------------------------
 # Main loop
