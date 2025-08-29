@@ -29,9 +29,8 @@ template_collection = db["templates"]
 session = aioboto3.Session()
 BUCKET = settings.BUCKET_NAME
 REGION = settings.AWS_REGION
-
 async def get_s3_client():
-    return await session.client(
+    return session.client(
         "s3",
         aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
         aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
@@ -39,7 +38,7 @@ async def get_s3_client():
     )
 
 async def get_sqs_client():
-    return await session.client(
+    return session.client(
         "sqs",
         aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
         aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
@@ -191,7 +190,7 @@ async def build_project_if_needed(project_dir: str) -> str:
 # Async S3 helpers
 # -----------------------------
 async def upload_folder_to_s3(folder_path: str, s3_prefix: str):
-    async with await get_s3_client() as s3_client:
+    async with get_s3_client() as s3_client:
         for root, _, files in os.walk(folder_path):
             for f in files:
                 full = os.path.join(root, f)
@@ -200,7 +199,7 @@ async def upload_folder_to_s3(folder_path: str, s3_prefix: str):
                 await s3_client.upload_file(full, BUCKET, key)
 
 async def presign(key: str, expires: int = 3600) -> str:
-    async with await get_s3_client() as s3_client:
+    async with get_s3_client() as s3_client:
         return await s3_client.generate_presigned_url(
             "get_object",
             Params={"Bucket": BUCKET, "Key": key},
@@ -225,7 +224,7 @@ async def process_template(template_id: str, upload_zip_key: str):
             work_dir = tempfile.mkdtemp(prefix=f"s8builder_{template_id}_")
             zip_path = os.path.join(work_dir, os.path.basename(upload_zip_key))
 
-            async with await get_s3_client() as s3_client:
+            async with get_s3_client() as s3_client:
                 await s3_client.download_file(BUCKET, upload_zip_key, zip_path)
 
             extract_dir = os.path.join(work_dir, "src")
@@ -249,7 +248,7 @@ async def process_template(template_id: str, upload_zip_key: str):
             await update_template_status(template_id, "error", None)
             dlq_url = getattr(settings, "SQS_DLQ_URL", None)
             if dlq_url:
-                async with await get_sqs_client() as sqs_client:
+                async with get_sqs_client() as sqs_client:
                     await sqs_client.send_message(
                         QueueUrl=dlq_url,
                         MessageBody=json.dumps({"template_id": template_id, "s3_key": upload_zip_key})
@@ -264,7 +263,7 @@ async def process_template(template_id: str, upload_zip_key: str):
 # -----------------------------
 async def poll_sqs():
     logger.info("Starting async SQS polling...")
-    async with await get_sqs_client() as sqs_client:
+    async with get_sqs_client() as sqs_client:
         while not stop_flag:
             try:
                 # DEBUG: indicate polling attempt
