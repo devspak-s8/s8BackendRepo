@@ -259,26 +259,32 @@ async def process_template(template_id: str, upload_zip_key: str):
                 try: os.remove(zip_path)
                 except Exception: pass
             if work_dir: safe_rmtree(work_dir)
-
 # -----------------------------
-# Async SQS polling
+# Async SQS polling with debug
 # -----------------------------
 async def poll_sqs():
     logger.info("Starting async SQS polling...")
     async with await get_sqs_client() as sqs_client:
         while not stop_flag:
             try:
+                # DEBUG: indicate polling attempt
+                logger.info("Polling SQS queue for messages...")
+                
                 resp = await sqs_client.receive_message(
                     QueueUrl=settings.SQS_QUEUE_URL,
                     MaxNumberOfMessages=5,
-                    WaitTimeSeconds=20,
+                    WaitTimeSeconds=5,  # shorter for faster debug
                     VisibilityTimeout=300,
                 )
                 messages = resp.get("Messages", [])
+                
                 if messages:
+                    logger.info(f"Received {len(messages)} message(s) from SQS.")
                     tasks = [
-                        process_template(str(json.loads(m["Body"])["template_id"]),
-                                         json.loads(m["Body"])["s3_key"])
+                        process_template(
+                            str(json.loads(m["Body"])["template_id"]),
+                            json.loads(m["Body"])["s3_key"]
+                        )
                         for m in messages
                     ]
                     await asyncio.gather(*tasks)
@@ -287,10 +293,11 @@ async def poll_sqs():
                             QueueUrl=settings.SQS_QUEUE_URL,
                             ReceiptHandle=m["ReceiptHandle"]
                         )
+                        logger.info(f"Deleted message {m['MessageId']} from queue.")
                 else:
-                    # Heartbeat log when queue is empty
                     logger.info("SQS queue empty, waiting for new messages...")
-                    await asyncio.sleep(5)
+                    await asyncio.sleep(2)
+
             except Exception as e:
                 logger.error(f"SQS polling error: {e}")
                 await asyncio.sleep(5)
