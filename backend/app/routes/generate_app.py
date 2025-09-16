@@ -1,30 +1,33 @@
-# app/routes/generate_app.py
-from fastapi import APIRouter, HTTPException, Depends, Body
+from fastapi import APIRouter, HTTPException, Body, Depends
 from fastapi.responses import JSONResponse
 from s8.db.database import db
-from app.middleware.rbac import get_current_user  # returns Mongo user dict
+from app.middleware.rbac import get_current_user
+from typing import Optional
 import os, shutil, tempfile, zipfile, uuid, json
+from bson import ObjectId
 
-router = APIRouter(prefix="/api/generate-app", tags=["App Generator"])
-
+router = APIRouter(prefix="/api/pagesgenerated", tags=["App Generator"])
 
 @router.post("/")
 async def generate_app(
     data: dict = Body(...),
-    current_user: dict = Depends(get_current_user)  # ✅ raw dict user
+    current_user: Optional[dict] = Depends(get_current_user)
 ):
     """
+    Generate a React app from a project.
     Body: { "project_id": "<id>" }
-    Auth: Bearer <token>
+    Auth optional: If token provided, ownership is enforced.
     """
     project_id = data.get("project_id")
     if not project_id:
         raise HTTPException(status_code=400, detail="project_id is required")
 
-    # ✅ enforce ownership (stringify user id since ObjectId was normalized in rbac.py)
-    project = await db.generated_pages.find_one(
-        {"_id": project_id, "user_id": str(current_user["_id"])}
-    )
+    # Optional ownership enforcement
+    query = {"_id": ObjectId(project_id)}
+    if current_user:
+        query["user_id"] = str(current_user["_id"])
+
+    project = await db.generated_pages.find_one(query)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found or not yours")
 
@@ -33,7 +36,7 @@ async def generate_app(
     os.makedirs(src_dir, exist_ok=True)
 
     try:
-        # 1. package.json with both your packages
+        # 1. package.json
         package_json = {
             "name": f"s8-project-{uuid.uuid4().hex[:6]}",
             "version": "1.0.0",
