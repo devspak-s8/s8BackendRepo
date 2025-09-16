@@ -6,12 +6,13 @@ import tempfile
 
 router = APIRouter(prefix="/downloads", tags=["Downloads"])
 
-ZIP_DIR = tempfile.gettempdir()  # Same folder where zips are generated
+# Directory where ZIP files are temporarily stored
+ZIP_DIR = tempfile.gettempdir()  # same folder used in generate_app.py
 
 @router.get("/{zip_name}")
 async def download_zip(zip_name: str):
     """
-    Download a generated zip file.
+    Download a previously generated ZIP file by its name.
     """
     zip_path = os.path.join(ZIP_DIR, zip_name)
 
@@ -20,6 +21,6 @@ async def download_zip(zip_name: str):
 
     return FileResponse(
         path=zip_path,
-        filename=zip_name,
-        media_type='application/zip'
+        filename=zip_name,    # sets the download filename
+        media_type="application/zip"
     )
