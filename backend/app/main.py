@@ -1,9 +1,12 @@
 # app/main.py
-from fastapi import FastAPI
+
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 import logging
+from fastapi.security import OAuth2PasswordBearer
+from fastapi.openapi.utils import get_openapi
 
 # Routers
 from app.routes.auth import auth_router
@@ -24,10 +27,42 @@ from s8.core.error_handlers import (
     generic_exception_handler
 )
 
+# ------------------------
 # App init
+# ------------------------
 app = FastAPI(title="S8Builder API")
 
-# ✅ Enable CORS (adjust origins in production)
+# ------------------------
+# OAuth2 / Swagger Authorize
+# ------------------------
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title="S8Builder API",
+        version="1.0.0",
+        description="API for S8Builder",
+        routes=app.routes,
+    )
+    openapi_schema["components"]["securitySchemes"] = {
+        "OAuth2Password": {
+            "type": "oauth2",
+            "flows": {"password": {"tokenUrl": "/api/auth/login", "scopes": {}}}
+        }
+    }
+    for path in openapi_schema["paths"].values():
+        for method in path.values():
+            method["security"] = [{"OAuth2Password": []}]
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
+
+# ------------------------
+# CORS
+# ------------------------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -39,20 +74,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ✅ Register routes
+# ------------------------
+# Routes
+# ------------------------
 app.include_router(auth_router, prefix="/api/auth")
 app.include_router(booking_router, prefix="/api/bookings")
 app.include_router(ws_router, prefix="/api/ws")
 app.include_router(template_router, prefix="/api/templates")
 app.include_router(dashboard_router, prefix="/api/dashboard")
-app.include_router(generated_pages_router, prefix="/api/pages")   # new
-app.include_router(generate_app_router, prefix="/api/pagesgenerated")      # new
+app.include_router(generated_pages_router, prefix="/api/pages")
+app.include_router(generate_app_router, prefix="/api/pagesgenerated")
 
-# ✅ Register global exception handlers
+# ------------------------
+# Exception handlers
+# ------------------------
 app.add_exception_handler(StarletteHTTPException, http_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(Exception, generic_exception_handler)
 
+# ------------------------
+# Health & root
+# ------------------------
 @app.get("/")
 async def root():
     return {"message": "🚀 Welcome to S8Builder API"}
@@ -61,7 +103,9 @@ async def root():
 async def healthz():
     return {"status": "ok"}
 
-# ✅ DB connectivity check
+# ------------------------
+# DB connectivity
+# ------------------------
 @app.on_event("startup")
 async def startup_db_check():
     try:
