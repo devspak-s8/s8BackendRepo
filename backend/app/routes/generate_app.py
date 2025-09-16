@@ -1,33 +1,36 @@
-from fastapi import APIRouter, HTTPException, Body, Depends
+# app/routes/generate_app.py
+from fastapi import APIRouter, HTTPException, Depends, Body
 from fastapi.responses import JSONResponse
 from s8.db.database import db
 from app.middleware.rbac import get_current_user
-from typing import Optional
-import os, shutil, tempfile, zipfile, uuid, json
 from bson import ObjectId
+import os, shutil, tempfile, zipfile, uuid, json
 
-router = APIRouter(prefix="/api/pagesgenerated", tags=["App Generator"])
+router = APIRouter(prefix="", tags=["App Generator"])
 
 @router.post("/")
 async def generate_app(
     data: dict = Body(...),
-    current_user: Optional[dict] = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """
-    Generate a React app from a project.
+    Generate a React app from a given project.
     Body: { "project_id": "<id>" }
-    Auth optional: If token provided, ownership is enforced.
     """
     project_id = data.get("project_id")
     if not project_id:
         raise HTTPException(status_code=400, detail="project_id is required")
 
-    # Optional ownership enforcement
-    query = {"_id": ObjectId(project_id)}
-    if current_user:
-        query["user_id"] = str(current_user["_id"])
+    # ✅ Convert project_id to ObjectId
+    try:
+        obj_id = ObjectId(project_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid project_id")
 
-    project = await db.generated_pages.find_one(query)
+    # Verify ownership
+    project = await db.generated_pages.find_one(
+        {"_id": obj_id, "user_id": str(current_user["_id"])}
+    )
     if not project:
         raise HTTPException(status_code=404, detail="Project not found or not yours")
 
@@ -51,14 +54,13 @@ async def generate_app(
         with open(os.path.join(temp_dir, "package.json"), "w") as f:
             json.dump(package_json, f, indent=2)
 
-        # 2. Generate React pages
+        # 2. Generate pages
         pages = project.get("pages", [])
         app_imports, app_children = [], []
 
         for page in pages:
             page_name = page.get("page_name", "Page").replace(" ", "")
             page_file = os.path.join(src_dir, f"{page_name}.jsx")
-
             page_imports, page_body = [], []
 
             for comp in page.get("components", []):
@@ -132,8 +134,6 @@ root.render(<App />);"""
             "message": "App generated successfully",
             "download_url": f"/downloads/{zip_name}"
         })
+
     finally:
-        try:
-            shutil.rmtree(temp_dir)
-        except Exception:
-            pass
+        shutil.rmtree(temp_dir, ignore_errors=True)

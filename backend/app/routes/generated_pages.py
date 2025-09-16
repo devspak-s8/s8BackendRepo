@@ -1,56 +1,68 @@
-from fastapi import APIRouter, Body, Depends, HTTPException
+# app/routes/generated_pages.py
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from typing import List, Dict, Any
 from s8.db.database import db
 from bson import ObjectId
-from typing import Optional
 from app.middleware.rbac import get_current_user
 
-router = APIRouter(prefix="/api/generated-pages", tags=["Generated Pages"])
+router = APIRouter(prefix="", tags=["Generated Pages"])
 
-# -------------------------
-# Create generated page
-# -------------------------
+# -----------------------------
+# Schemas
+# -----------------------------
+class ComponentSchema(BaseModel):
+    component_name: str
+    variant_name: str
+    props: Dict[str, Any]
+
+class PageSchema(BaseModel):
+    page_name: str
+    components: List[ComponentSchema]
+
+class GeneratedPageSchema(BaseModel):
+    page_type: str   # e.g. "single", "multi"
+    website_type: str
+    pages: List[PageSchema]
+
+# -----------------------------
+# Routes
+# -----------------------------
 @router.post("/")
-async def create_generated_page(data: dict = Body(...), current_user: Optional[dict] = Depends(get_current_user)):
+async def create_generated_page(
+    data: GeneratedPageSchema,
+    current_user: dict = Depends(get_current_user)
+):
     """
-    Create a generated page project.
-    If current_user is available, set ownership automatically.
+    Create a new generated project linked to the user.
     """
-    if current_user:
-        data["user_id"] = str(current_user["_id"])  # enforce ownership
+    payload = data.dict()
+    payload["user_id"] = str(current_user["_id"])  # enforce ownership
 
-    result = await db.generated_pages.insert_one(data)
+    result = await db.generated_pages.insert_one(payload)
     return {"inserted_id": str(result.inserted_id)}
 
-# -------------------------
-# List generated pages
-# -------------------------
 @router.get("/")
-async def list_generated_pages(current_user: Optional[dict] = Depends(get_current_user)):
+async def list_generated_pages(current_user: dict = Depends(get_current_user)):
     """
-    List generated pages.
-    Authenticated → only user's projects.
-    Unauthenticated → all projects.
+    List all generated projects belonging to the current user.
     """
-    query = {"user_id": str(current_user["_id"])} if current_user else {}
-    projects = await db.generated_pages.find(query).to_list(100)
+    projects = await db.generated_pages.find({"user_id": str(current_user["_id"])}).to_list(100)
     for project in projects:
-        project["_id"] = str(project["_id"])
+        project["_id"] = str(project["_id"])  # convert ObjectId to string for JSON
     return projects
 
-# -------------------------
-# Fetch single project (for generate_app)
-# -------------------------
 @router.get("/{project_id}")
-async def get_generated_page(project_id: str, current_user: Optional[dict] = Depends(get_current_user)):
+async def get_generated_page(project_id: str, current_user: dict = Depends(get_current_user)):
     """
-    Fetch a single project by ID.
-    If user is authenticated, enforce ownership. Otherwise, fetch by ID only.
+    Get a single project by ID if it belongs to the current user.
     """
-    query = {"_id": ObjectId(project_id)}
-    if current_user:
-        query["user_id"] = str(current_user["_id"])
+    try:
+        obj_id = ObjectId(project_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid project_id")
 
-    project = await db.generated_pages.find_one(query)
+    project = await db.generated_pages.find_one({"_id": obj_id, "user_id": str(current_user["_id"])})
     if not project:
         raise HTTPException(status_code=404, detail="Project not found or not yours")
     
