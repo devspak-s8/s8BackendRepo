@@ -57,6 +57,10 @@ app.add_exception_handler(Exception, generic_exception_handler)
 async def root():
     return {"message": "🚀 Welcome to S8Builder API"}
 
+@app.get("/healthz")
+async def healthz():
+    return {"status": "ok"}
+
 # ✅ DB connectivity check
 @app.on_event("startup")
 async def startup_db_check():
