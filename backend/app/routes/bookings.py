@@ -4,7 +4,8 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List
 from bson import ObjectId
-
+from fastapi import Request
+from typing import Optional
 from s8.db.database import booking_collection
 
 from app.schemas.bookings import BookingCreate, BookingOut, BookingStatusUpdate
@@ -18,13 +19,24 @@ booking_router = APIRouter( tags=["Bookings"])
 
 
 @booking_router.post("/", response_model=BookingOut)
-async def create_booking(data: BookingCreate, user=Depends(get_current_user, use_cache=False)):
+async def create_booking(
+    data: BookingCreate,
+    request: Request,
+    user: Optional[dict] = Depends(lambda: None)  # 👈 guest fallback
+):
     """
     Allows guest or signed-in users to create a booking.
     Guests: Sends confirmation to their email + admin immediately.
     Signed-in users: No email yet, only after approval.
     """
     try:
+        # If request has valid token, extract user
+        if "authorization" in request.headers:
+            try:
+                user = await get_current_user(request)
+            except Exception:
+                user = None
+
         new_booking = {
             "booking_id": str(uuid4()),
             "name": data.name if not user else user["name"],
@@ -44,40 +56,44 @@ async def create_booking(data: BookingCreate, user=Depends(get_current_user, use
         result = await booking_collection.insert_one(new_booking)
         new_booking["id"] = str(result.inserted_id)
 
-        # 📧 If guest booking (no user), send confirmation immediately
+        # Guest: send confirmation immediately
         if not user:
             try:
-                # Guest confirmation email
-                guest_subject = "Your Booking Confirmation"
-                guest_body = f"""
-                Hello {new_booking['name']},
+                send_email(
+                    new_booking["email"],
+                    "Booking Confirmation",
+                    f"""
+Hello {new_booking['name']},
 
-                Below are your booking details:
-                - Booking ID: {new_booking['booking_id']}
-                - Date: {new_booking['date']}
-                - Notes: {new_booking['notes']}
+Your booking has been created successfully. 
+Below are your booking details:
 
-                A meeting call will be scheduled shortly.
-                """
-                send_email(new_booking["email"], guest_subject, guest_body)
+Date: {new_booking['date']}
+Notes: {new_booking['notes']}
 
-                # Admin notification email
-                admin_email = "info@s8globals.org"  # 🔑 move to settings later
-                admin_subject = "New Booking Notification"
-                admin_body = f"""
-                Admin,
+A meeting call will be scheduled shortly.
+Booking ID: {new_booking['booking_id']}
 
-                Someone just created a booking.
+Regards,
+S8Globals
+                    """
+                )
 
-                Booking details:
-                - Name: {new_booking['name']}
-                - Email: {new_booking['email']}
-                - Date: {new_booking['date']}
-                - Notes: {new_booking['notes']}
-                - Status: {new_booking['status']}
-                """
-                send_email(admin_email, admin_subject, admin_body)
+                send_email(
+                    "admin@s8globals.org",
+                    "New Guest Booking",
+                    f"""
+Admin,
 
+A new guest booking was created.
+
+Name: {new_booking['name']}
+Email: {new_booking['email']}
+Date: {new_booking['date']}
+Notes: {new_booking['notes']}
+Booking ID: {new_booking['booking_id']}
+                    """
+                )
             except Exception as mail_err:
                 print("⚠️ Failed to send booking emails:", mail_err)
 
