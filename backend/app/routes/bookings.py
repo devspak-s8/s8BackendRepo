@@ -16,7 +16,6 @@ from app.utils.meet_link_and_mail import send_meeting_email
 from app.utils.email_utils import send_email
 from s8.serialize import serialize_doc
 booking_router = APIRouter( tags=["Bookings"])
-
 @booking_router.post("/", response_model=BookingOut)
 async def create_booking(data: BookingCreate, request: Request):
     try:
@@ -47,6 +46,51 @@ async def create_booking(data: BookingCreate, request: Request):
         result = await booking_collection.insert_one(new_booking)
         new_booking["id"] = str(result.inserted_id)
         print("📌 New booking created:", new_booking)
+
+        # 📧 Send emails only if it's a guest booking
+        if not user:
+            try:
+                # Guest confirmation
+                send_email(
+                    new_booking["email"],
+                    "Booking Confirmation",
+                    f"""
+Hello {new_booking['name']},
+
+Your booking has been created successfully ✅
+
+Here are the details:
+- Booking ID: {new_booking['booking_id']}
+- Date: {new_booking['date']}
+- Notes: {new_booking['notes']}
+
+A meeting call will be scheduled shortly.
+Thank you for choosing S8Globals!
+
+-- S8Globals Team
+                    """
+                )
+
+                # Admin notification
+                send_email(
+                    "info@s8globals.org",  # 🔑 Replace with env/config
+                    "New Guest Booking Alert",
+                    f"""
+A new guest booking has been created 🚨
+
+- Name: {new_booking['name']}
+- Email: {new_booking['email']}
+- Date: {new_booking['date']}
+- Notes: {new_booking['notes']}
+
+Booking ID: {new_booking['booking_id']}
+                    """
+                )
+
+                print("📧 Guest + Admin emails sent")
+
+            except Exception as mail_err:
+                print("⚠️ Email sending failed, but booking saved:", mail_err)
 
         return BookingOut(**new_booking)
 
