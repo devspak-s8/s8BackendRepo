@@ -4,10 +4,10 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List
 from bson import ObjectId
-from fastapi import Request
-from typing import Optional
-from s8.db.database import booking_collection
 
+from s8.db.database import booking_collection
+from starlette.requests import Request
+from typing import Optional
 from app.schemas.bookings import BookingCreate, BookingOut, BookingStatusUpdate
 
 from app.middleware.rbac import get_current_user, is_admin as get_admin_user
@@ -17,26 +17,22 @@ from app.utils.email_utils import send_email
 from s8.serialize import serialize_doc
 booking_router = APIRouter( tags=["Bookings"])
 
-
 @booking_router.post("/", response_model=BookingOut)
 async def create_booking(
     data: BookingCreate,
     request: Request,
-    user: Optional[dict] = Depends(lambda: None)  # 👈 guest fallback
+    user: Optional[dict] = Depends(lambda: None)
 ):
-    """
-    Allows guest or signed-in users to create a booking.
-    Guests: Sends confirmation to their email + admin immediately.
-    Signed-in users: No email yet, only after approval.
-    """
     try:
-        # If request has valid token, extract user
+        # Try authenticate user, else fallback to guest
         if "authorization" in request.headers:
             try:
                 user = await get_current_user(request)
-            except Exception:
+            except Exception as auth_err:
+                print("⚠️ Guest mode (auth failed):", auth_err)
                 user = None
 
+        # Build booking data
         new_booking = {
             "booking_id": str(uuid4()),
             "name": data.name if not user else user["name"],
@@ -49,14 +45,15 @@ async def create_booking(
             "updated_at": datetime.utcnow()
         }
 
-        # Only assign user_id if signed in
         if user:
             new_booking["user_id"] = str(user["_id"])
 
+        # Save booking
         result = await booking_collection.insert_one(new_booking)
         new_booking["id"] = str(result.inserted_id)
+        print("✅ Booking inserted:", new_booking)
 
-        # Guest: send confirmation immediately
+        # 📧 Guests only → send confirmation + admin notification
         if not user:
             try:
                 send_email(
@@ -66,36 +63,34 @@ async def create_booking(
 Hello {new_booking['name']},
 
 Your booking has been created successfully. 
-Below are your booking details:
+Here are the details:
+- Booking ID: {new_booking['booking_id']}
+- Date: {new_booking['date']}
+- Notes: {new_booking['notes']}
 
-Date: {new_booking['date']}
-Notes: {new_booking['notes']}
+A meeting call will be scheduled shortly. 
+Thank you!
 
-A meeting call will be scheduled shortly.
-Booking ID: {new_booking['booking_id']}
-
-Regards,
-S8Globals
-                    """
+S8Globals Team
+"""
                 )
-
                 send_email(
-                    "admin@s8globals.org",
+                    "info@s8globals.org",
                     "New Guest Booking",
                     f"""
-Admin,
+A new guest booking was created:
 
-A new guest booking was created.
+- Name: {new_booking['name']}
+- Email: {new_booking['email']}
+- Date: {new_booking['date']}
+- Notes: {new_booking['notes']}
 
-Name: {new_booking['name']}
-Email: {new_booking['email']}
-Date: {new_booking['date']}
-Notes: {new_booking['notes']}
 Booking ID: {new_booking['booking_id']}
-                    """
+"""
                 )
+                print("📧 Guest + Admin emails sent")
             except Exception as mail_err:
-                print("⚠️ Failed to send booking emails:", mail_err)
+                print("⚠️ Email failed but booking saved:", mail_err)
 
         return new_booking
 
@@ -103,6 +98,7 @@ Booking ID: {new_booking['booking_id']}
         print("❌ Booking creation failed:", e)
         traceback.print_exc()
         raise HTTPException(status_code=500, detail="Booking creation failed")
+
 # Get current user's bookings
 @booking_router.get("/my", response_model=List[BookingOut])
 async def get_my_bookings(user=Depends(get_current_user)):
