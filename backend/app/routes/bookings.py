@@ -12,19 +12,23 @@ from app.schemas.bookings import BookingCreate, BookingOut, BookingStatusUpdate
 from app.middleware.rbac import get_current_user, is_admin as get_admin_user
 from app.routes.ws import broadcast_booking_update
 from app.utils.meet_link_and_mail import send_meeting_email
-
+from app.utils.email_utils import send_email
 from s8.serialize import serialize_doc
 booking_router = APIRouter( tags=["Bookings"])
 
 
 @booking_router.post("/", response_model=BookingOut)
-async def create_booking(data: BookingCreate, user=Depends(get_current_user)):
+async def create_booking(data: BookingCreate, user=Depends(get_current_user, use_cache=False)):
+    """
+    Allows guest or signed-in users to create a booking.
+    Guests: Sends confirmation to their email + admin immediately.
+    Signed-in users: No email yet, only after approval.
+    """
     try:
         new_booking = {
             "booking_id": str(uuid4()),
-            "userid": str(user["_id"]), 
-            "name": user["name"],
-            "email": user["email"],
+            "name": data.name if not user else user["name"],
+            "email": data.email if not user else user["email"],
             "date": data.date,
             "notes": data.notes,
             "status": "pending",
@@ -33,17 +37,56 @@ async def create_booking(data: BookingCreate, user=Depends(get_current_user)):
             "updated_at": datetime.utcnow()
         }
 
+        # Only assign user_id if signed in
+        if user:
+            new_booking["user_id"] = str(user["_id"])
+
         result = await booking_collection.insert_one(new_booking)
-        new_booking["id"] = str(result.inserted_id)   # 🟢 Match Pydantic schema
-        print("📌 New booking created:", new_booking)
+        new_booking["id"] = str(result.inserted_id)
+
+        # 📧 If guest booking (no user), send confirmation immediately
+        if not user:
+            try:
+                # Guest confirmation email
+                guest_subject = "Your Booking Confirmation"
+                guest_body = f"""
+                Hello {new_booking['name']},
+
+                Below are your booking details:
+                - Booking ID: {new_booking['booking_id']}
+                - Date: {new_booking['date']}
+                - Notes: {new_booking['notes']}
+
+                A meeting call will be scheduled shortly.
+                """
+                send_email(new_booking["email"], guest_subject, guest_body)
+
+                # Admin notification email
+                admin_email = "info@s8globals.org"  # 🔑 move to settings later
+                admin_subject = "New Booking Notification"
+                admin_body = f"""
+                Admin,
+
+                Someone just created a booking.
+
+                Booking details:
+                - Name: {new_booking['name']}
+                - Email: {new_booking['email']}
+                - Date: {new_booking['date']}
+                - Notes: {new_booking['notes']}
+                - Status: {new_booking['status']}
+                """
+                send_email(admin_email, admin_subject, admin_body)
+
+            except Exception as mail_err:
+                print("⚠️ Failed to send booking emails:", mail_err)
 
         return new_booking
 
     except Exception as e:
         print("❌ Booking creation failed:", e)
-        traceback.print_exc() 
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail="Booking creation failed")
-
 # Get current user's bookings
 @booking_router.get("/my", response_model=List[BookingOut])
 async def get_my_bookings(user=Depends(get_current_user)):
