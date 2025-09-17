@@ -4,6 +4,8 @@ from typing import Optional
 from datetime import datetime
 
 class BookingCreate(BaseModel):
+    name: Optional[str] = None   # for guests
+    email: Optional[str] = None  # for guests
     date: datetime
     notes: Optional[str] = None
 

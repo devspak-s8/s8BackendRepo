@@ -18,25 +18,20 @@ from s8.serialize import serialize_doc
 booking_router = APIRouter( tags=["Bookings"])
 
 @booking_router.post("/", response_model=BookingOut)
-async def create_booking(
-    data: BookingCreate,
-    request: Request,
-    user: Optional[dict] = Depends(lambda: None)
-):
+async def create_booking(data: BookingCreate, request: Request):
     try:
-        # Try authenticate user, else fallback to guest
+        user = None
         if "authorization" in request.headers:
             try:
                 user = await get_current_user(request)
             except Exception as auth_err:
                 print("⚠️ Guest mode (auth failed):", auth_err)
-                user = None
 
-        # Build booking data
+        # 🛠 Build booking object
         new_booking = {
             "booking_id": str(uuid4()),
-            "name": data.name if not user else user["name"],
-            "email": data.email if not user else user["email"],
+            "name": user["name"] if user else data.name,
+            "email": user["email"] if user else data.email,
             "date": data.date,
             "notes": data.notes,
             "status": "pending",
@@ -46,53 +41,14 @@ async def create_booking(
         }
 
         if user:
-            new_booking["user_id"] = str(user["_id"])
+            new_booking["userid"] = str(user["_id"])  # only if logged in
 
-        # Save booking
+        # 💾 Save booking
         result = await booking_collection.insert_one(new_booking)
         new_booking["id"] = str(result.inserted_id)
-        print("✅ Booking inserted:", new_booking)
+        print("📌 New booking created:", new_booking)
 
-        # 📧 Guests only → send confirmation + admin notification
-        if not user:
-            try:
-                send_email(
-                    new_booking["email"],
-                    "Booking Confirmation",
-                    f"""
-Hello {new_booking['name']},
-
-Your booking has been created successfully. 
-Here are the details:
-- Booking ID: {new_booking['booking_id']}
-- Date: {new_booking['date']}
-- Notes: {new_booking['notes']}
-
-A meeting call will be scheduled shortly. 
-Thank you!
-
-S8Globals Team
-"""
-                )
-                send_email(
-                    "info@s8globals.org",
-                    "New Guest Booking",
-                    f"""
-A new guest booking was created:
-
-- Name: {new_booking['name']}
-- Email: {new_booking['email']}
-- Date: {new_booking['date']}
-- Notes: {new_booking['notes']}
-
-Booking ID: {new_booking['booking_id']}
-"""
-                )
-                print("📧 Guest + Admin emails sent")
-            except Exception as mail_err:
-                print("⚠️ Email failed but booking saved:", mail_err)
-
-        return new_booking
+        return BookingOut(**new_booking)
 
     except Exception as e:
         print("❌ Booking creation failed:", e)
