@@ -220,4 +220,8 @@ async def get_current_user_info(current_user: dict = Security(get_current_user))
     user = await user_collection.find_one({"email": current_user["email"]})
     if not user:
         raise ErrorResponses.USER_NOT_FOUND
+    
+    # Convert ObjectId to string
+    user["_id"] = str(user["_id"])
+    
     return user

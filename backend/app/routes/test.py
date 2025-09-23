@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from bson import ObjectId
-
+from s8.db.database import user_collection
 test_router = APIRouter()
 
 @test_router.post("/make-client/{user_id}")
