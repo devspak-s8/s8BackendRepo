@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 
 class RegisterSchema(BaseModel):
@@ -23,6 +23,7 @@ class TokenResponse(BaseModel):
     refresh_token: str
 
 class UserOut(BaseModel):
+    id: str = Field(..., alias="_id")
     email: EmailStr
     name: str
     role: str  # "Client" or "Dev"
