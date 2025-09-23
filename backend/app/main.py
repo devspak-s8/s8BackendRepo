@@ -16,7 +16,7 @@ from app.routes.dashboard import dashboard_router
 from app.routes.ws import ws_router
 from app.routes.generated_pages import router as generated_pages_router
 from app.routes.generate_app import router as generate_app_router
-
+from app.routes.profile import profile_router 
 from app.routes.download import router as download_router
 # DB
 from s8.db.database import user_collection
@@ -86,6 +86,8 @@ app.include_router(dashboard_router, prefix="/api/dashboard")
 app.include_router(generated_pages_router, prefix="/api/pages")
 app.include_router(generate_app_router, prefix="/api/pagesgenerated")
 app.include_router(download_router)
+
+app.include_router(profile_router, prefix="/api")  
 # ------------------------
 # Exception handlers
 # ------------------------
