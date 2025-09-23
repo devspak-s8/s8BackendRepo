@@ -1,5 +1,5 @@
 # app/routers/profile.py
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Body
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Body, Form
 from app.middleware.rbac import get_current_user
 from s8.db.database import user_collection
 from app.schemas.profile import ClientProfileSchema, DevProfileSchema, ProjectSchema
@@ -8,24 +8,29 @@ from app.utils.b2_utils import get_signed_url, upload_image_to_b2
 from pathlib import Path
 import uuid
 from typing import List
+import json
 profile_router = APIRouter(prefix="/profile", tags=["Profile"])
 
 UPLOAD_DIR = Path("uploads/temp")  # Temporary local storage
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # ------------------------
-# Client Profile Endpointsfrom fastapi import Body
-
+# Client Profile Endpoints
 @profile_router.post("/client")
 async def create_client_profile(
-    profile: ClientProfileSchema = Body(..., embed=False),  # 👈 embed=False removes wrapper
+    profile: str = Form(...),  # JSON string
     file: UploadFile | None = File(default=None),
     user: dict = Depends(get_current_user)
 ):
     if user["role"] != "Client":
         raise HTTPException(status_code=403, detail="Only clients can create this profile")
 
-    profile_data = profile.dict()
+    try:
+        profile_dict = json.loads(profile)  # parse JSON string
+        profile_obj = ClientProfileSchema(**profile_dict)  # validate against schema
+        profile_data = profile_obj.dict()
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Invalid profile JSON: {str(e)}")
 
     # Handle profile picture
     if file:
@@ -50,8 +55,6 @@ async def create_client_profile(
         raise HTTPException(status_code=400, detail="Profile could not be updated")
 
     return {"msg": "✅ Client profile created successfully", "profile": profile_data}
-
-
 @profile_router.get("/client/me")
 async def get_client_profile(user: dict = Depends(get_current_user)):
     if user["role"] != "Client":
