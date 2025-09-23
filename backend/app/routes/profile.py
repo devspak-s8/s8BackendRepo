@@ -16,7 +16,6 @@ profile_router = APIRouter(prefix="/profile", tags=["Profile"])
 UPLOAD_DIR = Path("uploads/temp")  # Temporary local storage
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-
 @profile_router.post("/client")
 async def create_client_profile(
     request: Request,
@@ -30,10 +29,8 @@ async def create_client_profile(
 
     # --- Handle raw JSON vs multipart
     if profile_json:  
-        # came from JSON body
         profile_dict = profile_json
     elif profile:    
-        # came as string inside multipart
         try:
             profile_dict = json.loads(profile)
         except json.JSONDecodeError as e:
@@ -47,6 +44,10 @@ async def create_client_profile(
         profile_data = profile_obj.dict()
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=e.errors())
+
+    # --- Convert HttpUrl to str for MongoDB
+    if profile_data.get("professional_links"):
+        profile_data["professional_links"] = [str(url) for url in profile_data["professional_links"]]
 
     # --- Handle profile picture upload
     if file:
