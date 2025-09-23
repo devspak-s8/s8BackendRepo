@@ -1,10 +1,11 @@
-# app/schemas/user_schema.py
 from pydantic import BaseModel, EmailStr
+from typing import Optional
 
 class RegisterSchema(BaseModel):
     email: EmailStr
     name: str
     password: str
+    role: str  # "Client" or "Dev"
 
 class LoginSchema(BaseModel):
     email: EmailStr
@@ -24,5 +25,6 @@ class TokenResponse(BaseModel):
 class UserOut(BaseModel):
     email: EmailStr
     name: str
-    role: str
+    role: str  # "Client" or "Dev"
     is_verified: bool
+    profile_picture: Optional[str] = None  # optional profile URL
