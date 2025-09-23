@@ -14,11 +14,11 @@ UPLOAD_DIR = Path("uploads/temp")  # Temporary local storage
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # ------------------------
-# Client Profile Endpoints
-# ------------------------
+# Client Profile Endpointsfrom fastapi import Body
+
 @profile_router.post("/client")
 async def create_client_profile(
-    profile: ClientProfileSchema,
+    profile: ClientProfileSchema = Body(..., embed=False),  # 👈 embed=False removes wrapper
     file: UploadFile | None = File(default=None),
     user: dict = Depends(get_current_user)
 ):
@@ -41,7 +41,6 @@ async def create_client_profile(
         profile_data["profile_picture"] = b2_url
         local_file_path.unlink()
 
-    # Update MongoDB
     result = await user_collection.update_one(
         {"_id": user["_id"]},
         {"$set": {"profile": profile_data, "profile_completed": True}}
