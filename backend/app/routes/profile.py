@@ -4,7 +4,7 @@ from app.middleware.rbac import get_current_user
 from s8.db.database import user_collection
 from app.schemas.profile import ClientProfileSchema, DevProfileSchema, ProjectSchema
 from s8.core.config import settings
-from app.utils.b2_utils import get_signed_url, upload_file_to_b2
+from app.utils.b2_utils import get_signed_url, upload_image_to_b2
 from pathlib import Path
 import uuid
 from typing import List
@@ -37,7 +37,7 @@ async def create_client_profile(
             f.write(await file.read())
 
         # Upload to B2
-        b2_url = upload_file_to_b2(local_file_path)
+        b2_url = upload_image_to_b2(local_file_path)
         profile_data["profile_picture"] = b2_url
         local_file_path.unlink()
 
@@ -93,7 +93,7 @@ async def create_dev_profile(
         with local_file_path.open("wb") as f:
             f.write(await file.read())
 
-        b2_url = upload_file_to_b2(local_file_path)
+        b2_url = upload_image_to_b2(local_file_path)
         profile_data["profile_picture"] = b2_url
         local_file_path.unlink()
 
