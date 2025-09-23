@@ -1,5 +1,5 @@
 # app/routers/profile.py
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Body, Form
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Body, Form, Request
 from app.middleware.rbac import get_current_user
 from s8.db.database import user_collection
 from app.schemas.profile import ClientProfileSchema, DevProfileSchema, ProjectSchema
@@ -9,30 +9,46 @@ from pathlib import Path
 import uuid
 from typing import List
 import json
+from bson import ObjectId
+from pydantic import ValidationError
 profile_router = APIRouter(prefix="/profile", tags=["Profile"])
 
 UPLOAD_DIR = Path("uploads/temp")  # Temporary local storage
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-# ------------------------
-# Client Profile Endpoints
+
 @profile_router.post("/client")
 async def create_client_profile(
-    profile: str = Form(...),  # JSON string
+    request: Request,
+    profile: str | None = Form(None),  # for multipart
     file: UploadFile | None = File(default=None),
+    profile_json: dict | None = Body(None),  # for raw JSON
     user: dict = Depends(get_current_user)
 ):
     if user["role"] != "Client":
         raise HTTPException(status_code=403, detail="Only clients can create this profile")
 
-    try:
-        profile_dict = json.loads(profile)  # parse JSON string
-        profile_obj = ClientProfileSchema(**profile_dict)  # validate against schema
-        profile_data = profile_obj.dict()
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Invalid profile JSON: {str(e)}")
+    # --- Handle raw JSON vs multipart
+    if profile_json:  
+        # came from JSON body
+        profile_dict = profile_json
+    elif profile:    
+        # came as string inside multipart
+        try:
+            profile_dict = json.loads(profile)
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=422, detail=f"Invalid JSON in 'profile': {str(e)}")
+    else:
+        raise HTTPException(status_code=422, detail="Profile data is required")
 
-    # Handle profile picture
+    # --- Validate with Pydantic schema
+    try:
+        profile_obj = ClientProfileSchema(**profile_dict)
+        profile_data = profile_obj.dict()
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors())
+
+    # --- Handle profile picture upload
     if file:
         file_ext = Path(file.filename).suffix
         filename = f"{uuid.uuid4()}{file_ext}"
@@ -41,13 +57,13 @@ async def create_client_profile(
         with local_file_path.open("wb") as f:
             f.write(await file.read())
 
-        # Upload to B2
         b2_url = upload_image_to_b2(local_file_path)
         profile_data["profile_picture"] = b2_url
         local_file_path.unlink()
 
+    # --- Save to DB
     result = await user_collection.update_one(
-        {"_id": user["_id"]},
+        {"_id": ObjectId(str(user["_id"]))},
         {"$set": {"profile": profile_data, "profile_completed": True}}
     )
 
@@ -55,6 +71,7 @@ async def create_client_profile(
         raise HTTPException(status_code=400, detail="Profile could not be updated")
 
     return {"msg": "✅ Client profile created successfully", "profile": profile_data}
+
 @profile_router.get("/client/me")
 async def get_client_profile(user: dict = Depends(get_current_user)):
     if user["role"] != "Client":
