@@ -42,7 +42,7 @@ async def trigger_verification_email(email: str):
         {"$set": {"verification_token": token, "token_expires_at": expires_at}}
     )
 
-    verify_link = f"http://localhost:5173/verify-email?token={token}"
+    verify_link = f"https://www.s8backend.s8globals.org/api/auth/verify-email?token={token}"
     subject = "✅ Verify Your Email - S8Globals"
     body = f"""
     As-salaamu 'alaykum 👋,
