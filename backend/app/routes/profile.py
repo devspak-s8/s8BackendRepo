@@ -10,7 +10,7 @@ import uuid
 from typing import List
 import json
 from bson import ObjectId
-from pydantic import ValidationError
+from pydantic import ValidationError, HttpUrl
 profile_router = APIRouter(prefix="/profile", tags=["Profile"])
 
 UPLOAD_DIR = Path("uploads/temp")  # Temporary local storage
@@ -93,6 +93,7 @@ async def get_client_profile(user: dict = Depends(get_current_user)):
 # ------------------------
 # Developer Profile Endpoints
 # ------------------------
+# ------------------------
 @profile_router.post("/dev")
 async def create_dev_profile(
     request: Request,
@@ -121,6 +122,19 @@ async def create_dev_profile(
         profile_data = profile_obj.dict()
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=e.errors())
+
+    # --- Convert HttpUrl fields to strings recursively
+    def httpurl_to_str(data):
+        if isinstance(data, dict):
+            return {k: httpurl_to_str(v) for k, v in data.items()}
+        elif isinstance(data, list):
+            return [httpurl_to_str(i) for i in data]
+        elif isinstance(data, HttpUrl):
+            return str(data)
+        else:
+            return data
+
+    profile_data = httpurl_to_str(profile_data)
 
     # --- Handle profile picture upload
     if file:
