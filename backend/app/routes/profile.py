@@ -95,16 +95,34 @@ async def get_client_profile(user: dict = Depends(get_current_user)):
 # ------------------------
 @profile_router.post("/dev")
 async def create_dev_profile(
-    profile: DevProfileSchema,
+    request: Request,
+    profile: str | None = Form(None),        # JSON string for multipart
     file: UploadFile | None = File(default=None),
+    profile_json: dict | None = Body(None),  # raw JSON body
     user: dict = Depends(get_current_user)
 ):
     if user["role"] != "Dev":
         raise HTTPException(status_code=403, detail="Only developers can create this profile")
 
-    profile_data = profile.dict()
+    # --- Handle raw JSON vs multipart
+    if profile_json:
+        profile_dict = profile_json
+    elif profile:
+        try:
+            profile_dict = json.loads(profile)
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=422, detail=f"Invalid JSON in 'profile': {str(e)}")
+    else:
+        raise HTTPException(status_code=422, detail="Profile data is required")
 
-    # Handle profile picture
+    # --- Validate with Pydantic schema
+    try:
+        profile_obj = DevProfileSchema(**profile_dict)
+        profile_data = profile_obj.dict()
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors())
+
+    # --- Handle profile picture upload
     if file:
         file_ext = Path(file.filename).suffix
         filename = f"{uuid.uuid4()}{file_ext}"
@@ -117,9 +135,9 @@ async def create_dev_profile(
         profile_data["profile_picture"] = b2_url
         local_file_path.unlink()
 
-    # Update MongoDB
+    # --- Save to DB
     result = await user_collection.update_one(
-        {"_id": user["_id"]},
+        {"_id": ObjectId(str(user["_id"]))},
         {"$set": {"dev_profile": profile_data, "profile_completed": True}}
     )
 
@@ -127,7 +145,6 @@ async def create_dev_profile(
         raise HTTPException(status_code=400, detail="Developer profile could not be updated")
 
     return {"msg": "✅ Developer profile created successfully", "profile": profile_data}
-
 
 @profile_router.get("/dev/me")
 async def get_dev_profile(user: dict = Depends(get_current_user)):

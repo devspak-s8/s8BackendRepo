@@ -3,14 +3,14 @@ from bson import ObjectId
 from s8.db.database import user_collection
 test_router = APIRouter()
 
-@test_router.post("/make-client/{user_id}")
-async def make_client(user_id: str):
+@test_router.post("/make-dev/{user_id}")
+async def make_dev(user_id: str):
     result = await user_collection.update_one(
         {"_id": ObjectId(user_id)},
-        {"$set": {"role": "Client"}}
+        {"$set": {"role": "Dev"}}
     )
 
     if result.modified_count == 0:
-        raise HTTPException(status_code=404, detail="User not found or already Client")
+        raise HTTPException(status_code=404, detail="User not found or already Dev")
 
-    return {"msg": "✅ User role updated to Client"}
+    return {"msg": "✅ User role updated to Dev"}
