@@ -30,9 +30,9 @@ from app.schemas.dashboard import (
     RecentBooking
 )
 
-router = APIRouter()
+dashboard_router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
-@router.get("/api/client/dashboard", response_model=ClientDashboardResponse)
+@dashboard_router.get("/api/client/dashboard", response_model=ClientDashboardResponse)
 async def get_client_dashboard(
     cursor: Optional[str] = Query(None, description="Pagination cursor (last project ID)"),
     limit: int = Query(10, ge=1, le=50, description="Number of projects per page"),
