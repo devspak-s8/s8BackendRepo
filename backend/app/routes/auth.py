@@ -4,7 +4,7 @@ from fastapi import APIRouter, Body, Query, Security, HTTPException
 from fastapi.responses import RedirectResponse
 from app.middleware.rbac import get_current_user
 from app.schemas.user import *
-from app.utils.hash_utils import hash_password, verify_password
+from app.utils.hash_utils import hash_password, verify_and_upgrade_password
 from app.utils.auth_utils import create_access_token, decode_token, create_refresh_token
 from s8.db.database import user_collection
 from s8.core.config import settings
@@ -109,7 +109,7 @@ async def register(data: RegisterSchema):
 @auth_router.post("/login", response_model=TokenResponse)
 async def login(data: LoginSchema):
     user = await user_collection.find_one({"email": data.email})
-    if not user or not verify_password(data.password, user["password"]):
+    if not user or not verify_and_upgrade_password(data.password, user["password"]):
         raise ErrorResponses.INVALID_CREDENTIALS
 
     if not bool(user.get("is_verified", False)):
