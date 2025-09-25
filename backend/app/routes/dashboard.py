@@ -18,10 +18,10 @@ from typing import Optional
 from datetime import datetime
 from bson import ObjectId
 
-from s8.db.database import db # Your MongoDB connection
+from s8.db.database import user_collection, booking_collection, project_collection # Your MongoDB connection
 from app.middleware.rbac import get_current_client  # JWT dependency
 
-from schemas.dashboard import (
+from app.schemas.dashboard import (
     ClientDashboardResponse,
     FeedResponse,
     ProjectFeedItem,
@@ -43,7 +43,8 @@ async def get_client_dashboard(
     # ---------------------------
     # 1️⃣ Fetch client profile
     # ---------------------------
-    client = await db.clients.find_one({"_id": ObjectId(client_id)})
+    client = await user_collection.find_one({"_id": ObjectId(client_id), "role": "client"})
+
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
 
@@ -60,7 +61,7 @@ async def get_client_dashboard(
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid cursor")
 
-    project_cursor = db.projects.find(query).sort("created_at", -1).limit(limit)
+    project_cursor = project_collection.find(query).sort("created_at", -1).limit(limit)
     projects = await project_cursor.to_list(length=limit)
 
     feed_projects = []
@@ -91,7 +92,7 @@ async def get_client_dashboard(
     # 3️⃣ Booking summary
     # ---------------------------
     try:
-        bookings = await db.bookings.find({"clientId": str(client_id)}).to_list(None)
+        bookings = await booking_collection.find({"clientId": str(client_id)}).to_list(None)
     except Exception:
         bookings = []
 
@@ -109,7 +110,7 @@ async def get_client_dashboard(
     # 4️⃣ Recent bookings (limit 5)
     # ---------------------------
     try:
-        recent = await db.bookings.find({"clientId": str(client_id)}) \
+        recent = await booking_collection.find({"clientId": str(client_id)}) \
                                    .sort("startDate", -1) \
                                    .limit(5).to_list(length=5)
     except Exception:
