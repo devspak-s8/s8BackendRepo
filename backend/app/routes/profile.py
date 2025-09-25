@@ -46,9 +46,8 @@ async def create_client_profile(
         raise HTTPException(status_code=422, detail=e.errors())
 
     # --- Convert HttpUrl to str for MongoDB
-    if profile_data.get("professional_links"):
-        profile_data["professional_links"] = [str(url) for url in profile_data["professional_links"]]
-
+    if profile_data.get("links"):
+     profile_data["links"] = [str(url) for url in profile_data["links"]]
     # --- Handle profile picture upload
     if file:
         file_ext = Path(file.filename).suffix
