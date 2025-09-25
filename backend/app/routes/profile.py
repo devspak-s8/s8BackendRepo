@@ -1,7 +1,7 @@
 # app/routers/profile.py
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Body, Form, Request
 from app.middleware.rbac import get_current_user
-from s8.db.database import user_collection
+from s8.db.database import user_collection, project_collection
 from app.schemas.profile import ClientProfileSchema, DevProfileSchema, ProjectSchema
 from s8.core.config import settings
 from app.utils.b2_utils import get_signed_url, upload_image_to_b2
@@ -181,35 +181,28 @@ async def get_dev_profile(user: dict = Depends(get_current_user)):
 # ------------------------
 
 @profile_router.post("/dev/projects")
-async def add_dev_projects(
-    projects: List[ProjectSchema] = Body(...),
-    user: dict = Depends(get_current_user)
-):
-    if user["role"] != "Dev":
+async def add_project(project: ProjectSchema, current_user: dict = Depends(get_current_user)):
+    user_id = current_user["_id"]
+
+    # ensure this user is a dev
+    if "dev_profile" not in current_user:
         raise HTTPException(status_code=403, detail="Only developers can add projects")
 
-    dev_profile = user.get("dev_profile")
-    if not dev_profile:
-        raise HTTPException(status_code=404, detail="Developer profile not found. Create profile first.")
+    # enrich project with dev info
+    project_data = project.dict()
+    project_data["developer_id"] = str(user_id)
+    project_data["developer_name"] = current_user["fullname"]
 
-    # Assign unique IDs if missing
-    new_projects = []
-    for project in projects:
-        if not project.id:
-            project.id = str(uuid.uuid4())
-        new_projects.append(project.dict())
+    # 1️⃣ Insert into global collection
+    await project_collection.insert_one(project_data)
 
-    existing_projects = dev_profile.get("projects", [])
-    dev_profile["projects"] = existing_projects + new_projects
-
+    # 2️⃣ Also push into dev_profile.projects
     await user_collection.update_one(
-        {"_id": user["_id"]},
-        {"$set": {"dev_profile.projects": dev_profile["projects"]}}
+        {"_id": ObjectId(user_id)},
+        {"$push": {"dev_profile.projects": project_data}}
     )
 
-    return {"msg": "✅ Projects added successfully", "projects": dev_profile["projects"]}
-
-
+    return {"msg": "Project added successfully", "project": project_data}
 @profile_router.get("/dev/projects")
 async def get_dev_projects(user: dict = Depends(get_current_user)):
     if user["role"] != "Dev":
