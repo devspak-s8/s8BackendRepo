@@ -7,7 +7,8 @@ annotated-types==0.7.0
 anyio==4.9.0
 attrs==25.3.0
 audioop-lts==0.2.1
-bcrypt==4.3.0
+argon2-cffi==23.1.0
+passlib[argon2]==1.7.4
 botocore==1.39.7
 boto3==1.39.7
 b2sdk==1.26.0
@@ -33,7 +34,6 @@ jose==1.0.0
 motor==3.7.0
 multidict==6.6.0
 packaging==25.0
-passlib==1.7.4
 platformdirs==4.3.8
 propcache==0.3.2
 psutil==5.9.6
