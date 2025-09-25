@@ -70,24 +70,34 @@ async def trigger_verification_email(email: str):
 # ------------------------
 @auth_router.post("/register")
 async def register(data: RegisterSchema):
+    # Check if user already exists
     user = await user_collection.find_one({"email": data.email})
     if user:
         raise ErrorResponses.USER_EXISTS
 
     hashed_pw = hash_password(data.password)
-    role = "admin" if (
-        data.email == settings.ADMIN_EMAIL and data.password == settings.ADMIN_PASSWORD
-    ) else "user"
 
-    # Insert new user
+    # Assign role
+    if data.email == settings.ADMIN_EMAIL and data.password == settings.ADMIN_PASSWORD:
+        role = "admin"
+    else:
+        # Allow only "Client" or "Dev"
+        if data.role not in ["Client", "Dev"]:
+            raise HTTPException(
+                status_code=400, 
+                detail="Invalid role. Role must be either 'Client' or 'Dev'."
+            )
+        role = data.role
+
+    # Insert user
     await user_collection.insert_one({
-        **data.dict(),
+        **data.dict(exclude={"password"}),  # don’t store raw password
         "password": hashed_pw,
         "is_verified": False,
         "role": role
     })
 
-    # Trigger verification email automatically
+    # Trigger verification email
     await trigger_verification_email(data.email)
 
     return {"msg": "✅ Registered successfully. Please check your email to verify your account."}
