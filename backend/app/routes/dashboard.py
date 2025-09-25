@@ -18,7 +18,7 @@ from typing import Optional
 from datetime import datetime
 from bson import ObjectId
 
-from s8.db.database import user_collection, booking_collection, project_collection # Your MongoDB connection
+from s8.db.database import project_collection, booking_collection, user_collection # Your MongoDB connection
 from app.middleware.rbac import get_current_client  # JWT dependency
 
 from app.schemas.dashboard import (
