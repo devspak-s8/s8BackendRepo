@@ -23,9 +23,10 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         raise HTTPException(status_code=401, detail="Invalid token")
     
 async def get_current_client(user: dict = Depends(get_current_user)):
-    if user["role"] != "Client":
+
+    if user["role"].lower() not in ["client", "user"]:
         raise HTTPException(status_code=403, detail="Client access only")
-    return user
+    return {**user, "role": "Client"}  # normalize role
 
 async def get_current_dev(user: dict = Depends(get_current_user)):
     if user["role"] != "Dev":
