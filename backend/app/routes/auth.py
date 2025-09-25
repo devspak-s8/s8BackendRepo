@@ -109,7 +109,17 @@ async def register(data: RegisterSchema):
 @auth_router.post("/login", response_model=TokenResponse)
 async def login(data: LoginSchema):
     user = await user_collection.find_one({"email": data.email})
-    if not user or not verify_and_upgrade_password(data.password, user["password"]):
+    if not user:
+        raise ErrorResponses.INVALID_CREDENTIALS
+
+    # Use upgraded password checker
+    valid = await verify_and_upgrade_password(
+        user["email"],          # email
+        data.password,          # plain password
+        user["password"],       # hashed password
+        user_collection         # Mongo collection
+    )
+    if not valid:
         raise ErrorResponses.INVALID_CREDENTIALS
 
     if not bool(user.get("is_verified", False)):
