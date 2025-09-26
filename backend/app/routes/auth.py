@@ -10,6 +10,7 @@ from s8.db.database import user_collection
 from s8.core.config import settings
 from s8.core.error_messages import ErrorResponses  # Centralized error messages
 from uuid import uuid4
+import asyncio
 from app.utils.email_utils import send_email
 from datetime import datetime, timedelta
 auth_router = APIRouter(tags=["Auth"])
@@ -44,26 +45,12 @@ async def trigger_verification_email(email: str):
 
     verify_link = f"https://www.s8backend.s8globals.org/api/auth/verify-email?token={token}"
     subject = "✅ Verify Your Email - S8Globals"
-    body = f"""
-    As-salaamu 'alaykum 👋,
+    body = f"Please verify your email: {verify_link}"
 
-    Please verify your email by clicking the link below:
+    # Send in background
+    asyncio.create_task(send_email(email, subject, body))
 
-    {verify_link}
-
-    If you did not register, simply ignore this message.
-
-    -- Team S8Globals
-    """
-
-    try:
-        send_email(email, subject, body)
-    except Exception as e:
-        print("SMTP send failed:", e)
-        raise ErrorResponses.INTERNAL_SERVER_ERROR
-
-    return {"msg": "✅ Verification email sent successfully"}
-
+    return {"msg": "✅ Verification email scheduled"}
 
 # ------------------------
 # Register
