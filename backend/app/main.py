@@ -7,6 +7,9 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 import logging
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.openapi.utils import get_openapi
+import os
+import asyncio
+from motor.motor_asyncio import AsyncIOMotorClient
 
 # Routers
 from app.routes.auth import auth_router
@@ -19,8 +22,6 @@ from app.routes.generate_app import router as generate_app_router
 from app.routes.profile import profile_router 
 from app.routes.download import router as download_router
 from app.routes.test import test_router
-# DB
-from s8.db.database import user_collection
 
 # Error Handlers
 from s8.core.error_handlers import (
@@ -28,6 +29,14 @@ from s8.core.error_handlers import (
     validation_exception_handler,
     generic_exception_handler
 )
+
+# ------------------------
+# MongoDB setup
+# ------------------------
+MONGO_URI = os.environ.get("MONGO_URI")
+client = AsyncIOMotorClient(MONGO_URI)
+db = client["yourDatabaseName"]  # replace with your DB name
+user_collection = db["users"]
 
 # ------------------------
 # App init
@@ -88,8 +97,8 @@ app.include_router(generated_pages_router, prefix="/api/pages")
 app.include_router(generate_app_router, prefix="/api/pagesgenerated")
 app.include_router(download_router)
 app.include_router(test_router, prefix="/api/test", tags=["test"])
+app.include_router(profile_router, prefix="/api")
 
-app.include_router(profile_router, prefix="/api")  
 # ------------------------
 # Exception handlers
 # ------------------------
@@ -109,12 +118,13 @@ async def healthz():
     return {"status": "ok"}
 
 # ------------------------
-# DB connectivity
+# DB connectivity check
 # ------------------------
 @app.on_event("startup")
 async def startup_db_check():
     try:
-        await user_collection.find_one({})
+        # 5-second timeout to avoid blocking Railway
+        await asyncio.wait_for(user_collection.find_one({}), timeout=5)
         logging.info("✅ MongoDB connected successfully.")
     except Exception as e:
         logging.error("❌ MongoDB connection failed: %s", e)
