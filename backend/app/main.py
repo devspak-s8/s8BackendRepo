@@ -33,9 +33,10 @@ from s8.core.error_handlers import (
 # ------------------------
 # MongoDB setup
 # ------------------------
-MONGO_URI = os.environ.get("MONGO_URI")
-client = AsyncIOMotorClient(MONGO_URI)
-db = client["yourDatabaseName"]  # replace with your DB name
+
+MONGO_URL = os.environ.get("MONGO_URL")  # Railway-provided string
+client = AsyncIOMotorClient(MONGO_URL)
+db = client["s8builder"]  # your database name
 user_collection = db["users"]
 
 # ------------------------
